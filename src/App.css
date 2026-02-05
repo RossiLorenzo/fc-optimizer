@@ -1,0 +1,9 @@
+.app-container {
+  min-height: 100vh;
+}
+
+.filters-section {
+  background: var(--mantine-color-dark-6);
+  border-radius: var(--mantine-radius-md);
+  padding: var(--mantine-spacing-md);
+}
