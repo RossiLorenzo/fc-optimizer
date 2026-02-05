@@ -12,6 +12,14 @@ const EA_STATIC_URL = 'https://www.ea.com/ea-sports-fc/ultimate-team/web-app/con
 const FUT_API_URL = 'https://utas.mob.v4.prd.futc-ext.gcp.ea.com/ut/game/fc26';
 const FUTGG_API_URL = 'https://www.fut.gg/api/fut/fc-core-data';
 
+// Proxy image URLs to avoid CORS/hotlink protection issues
+const proxyImageUrl = (url: string | undefined): string | undefined => {
+  if (!url) return undefined;
+  // The fut.gg CDN blocks requests from non-whitelisted domains
+  // Proxy through our CORS proxy
+  return `${CORS_PROXY}${url}`;
+};
+
 interface FutGGClub {
   eaId: number;
   name: string;
@@ -95,23 +103,23 @@ async function fetchFutGGData(): Promise<{
   // Build teams map (including sibling clubs)
   const teams = new Map<number, EntityInfo>();
   for (const club of response.data.clubs) {
-    teams.set(club.eaId, { name: club.name, imgUrl: club.imageUrl });
+    teams.set(club.eaId, { name: club.name, imgUrl: proxyImageUrl(club.imageUrl) });
     // Also add sibling club ID with same info
     if (club.siblingClubEaId) {
-      teams.set(club.siblingClubEaId, { name: club.name, imgUrl: club.imageUrl });
+      teams.set(club.siblingClubEaId, { name: club.name, imgUrl: proxyImageUrl(club.imageUrl) });
     }
   }
 
   // Build nations map
   const nations = new Map<number, EntityInfo>();
   for (const nation of response.data.nations) {
-    nations.set(nation.eaId, { name: nation.name, imgUrl: nation.imageUrl });
+    nations.set(nation.eaId, { name: nation.name, imgUrl: proxyImageUrl(nation.imageUrl) });
   }
 
   // Build leagues map
   const leagues = new Map<number, EntityInfo>();
   for (const league of response.data.leagues) {
-    leagues.set(league.eaId, { name: league.name, imgUrl: league.imageUrl });
+    leagues.set(league.eaId, { name: league.name, imgUrl: proxyImageUrl(league.imageUrl) });
   }
 
   console.log(`Loaded ${nations.size} nations, ${leagues.size} leagues, ${teams.size} teams from fut.gg`);
