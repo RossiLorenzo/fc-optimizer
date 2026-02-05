@@ -39,9 +39,17 @@ import {
   IconCards,
   IconTrophy,
   IconShirt,
+  IconThumbUp,
+  IconThumbDown,
+  IconLoader,
 } from '@tabler/icons-react';
-import { processPlayers, fetchStaticData } from './services/api';
-import type { FetchResult } from './services/api';
+import {
+  fetchStaticData,
+  fetchAllSBCsWithDetails,
+  fetchSBCSetChallengeDetails,
+  processPlayers,
+} from './services/api';
+import type { FetchResult, SBCWithDetails, SBCChallengeDetail } from './services/api';
 import type { ProcessedPlayer, AggregatedPlayer, FilterState } from './types/player';
 import './App.css';
 
@@ -300,6 +308,271 @@ function TypeDistributionChart({ players }: { players: AggregatedPlayer[] }) {
           </Box>
         ))}
       </Stack>
+    </Paper>
+  );
+}
+
+function SBCList({ sid }: { sid: string }) {
+  const [sbcs, setSbcs] = useState<SBCWithDetails[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [page, setPage] = useState(0);
+  const pageSize = 10;
+  const fetchingRef = useRef(false);
+
+  // Navigation state for drill-down
+  const [selectedSet, setSelectedSet] = useState<{ setId: number; name: string } | null>(null);
+  const [challenges, setChallenges] = useState<SBCChallengeDetail[]>([]);
+  const [challengesLoading, setChallengesLoading] = useState(false);
+  const [challengesError, setChallengesError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!sid.trim()) {
+      setSbcs([]);
+      setLoading(false);
+      return;
+    }
+
+    if (fetchingRef.current) {
+      return;
+    }
+
+    let cancelled = false;
+
+    const loadSBCs = async () => {
+      fetchingRef.current = true;
+      try {
+        setLoading(true);
+        setError(null);
+        const data = await fetchAllSBCsWithDetails(sid);
+        if (!cancelled) {
+          setSbcs(data);
+        }
+      } catch (err) {
+        if (!cancelled) {
+          setError(err instanceof Error ? err.message : 'Failed to load SBCs');
+        }
+      } finally {
+        if (!cancelled) {
+          setLoading(false);
+        }
+        fetchingRef.current = false;
+      }
+    };
+
+    loadSBCs();
+
+    return () => {
+      cancelled = true;
+      fetchingRef.current = false;
+    };
+  }, [sid]);
+
+  const handleSBCClick = async (setId: number, name: string) => {
+    setSelectedSet({ setId, name });
+    setChallengesLoading(true);
+    setChallengesError(null);
+
+    try {
+      const challengeDetails = await fetchSBCSetChallengeDetails(sid, setId);
+      setChallenges(challengeDetails);
+    } catch (err) {
+      setChallengesError(err instanceof Error ? err.message : 'Failed to load challenges');
+    } finally {
+      setChallengesLoading(false);
+    }
+  };
+
+  const handleBackClick = () => {
+    setSelectedSet(null);
+    setChallenges([]);
+    setChallengesError(null);
+  };
+
+  const totalPages = Math.ceil(sbcs.length / pageSize);
+  const currentSBCs = sbcs.slice(page * pageSize, (page + 1) * pageSize);
+
+  if (!sid.trim()) {
+    return (
+      <Paper p="xs" radius="sm" withBorder>
+        <Group justify="space-between" mb="xs">
+          <Text size="xs" fw={600}>🎯 Live SBCs</Text>
+        </Group>
+        <Text size="xs" c="dimmed" ta="center" py="md">Enter SID to load SBCs</Text>
+      </Paper>
+    );
+  }
+
+  if (loading) {
+    return (
+      <Paper p="xs" radius="sm" withBorder>
+        <Group justify="space-between" mb="xs">
+          <Text size="xs" fw={600}>🎯 Live SBCs</Text>
+        </Group>
+        <Center py="md">
+          <Group gap="xs">
+            <IconLoader size={16} className="spin" />
+            <Text size="xs" c="dimmed">Loading SBCs...</Text>
+          </Group>
+        </Center>
+      </Paper>
+    );
+  }
+
+  if (error) {
+    return (
+      <Paper p="xs" radius="sm" withBorder>
+        <Group justify="space-between" mb="xs">
+          <Text size="xs" fw={600}>🎯 Live SBCs</Text>
+        </Group>
+        <Alert color="red" variant="light" title="Error" icon={<IconAlertCircle size={14} />}>
+          <Text size="xs">{error}</Text>
+        </Alert>
+      </Paper>
+    );
+  }
+
+  // Show challenge details view when a set is selected
+  if (selectedSet) {
+    return (
+      <Paper p="xs" radius="sm" withBorder>
+        <Group justify="space-between" mb="xs">
+          <Group gap="xs">
+            <ActionIcon
+              size="xs"
+              variant="subtle"
+              onClick={handleBackClick}
+            >
+              <IconChevronLeft size={14} />
+            </ActionIcon>
+            <Text size="xs" fw={600} truncate style={{ maxWidth: 180 }}>
+              {selectedSet.name}
+            </Text>
+          </Group>
+        </Group>
+
+        {challengesLoading ? (
+          <Center py="md">
+            <Group gap="xs">
+              <IconLoader size={16} className="spin" />
+              <Text size="xs" c="dimmed">Loading challenges...</Text>
+            </Group>
+          </Center>
+        ) : challengesError ? (
+          <Alert color="red" variant="light" title="Error" icon={<IconAlertCircle size={14} />}>
+            <Text size="xs">{challengesError}</Text>
+          </Alert>
+        ) : (
+          <Table.ScrollContainer minWidth={200}>
+            <Table striped highlightOnHover withTableBorder withColumnBorders verticalSpacing={2} horizontalSpacing={4} layout="fixed">
+              <Table.Thead>
+                <Table.Tr>
+                  <Table.Th style={{ fontSize: '10px', width: '50%' }}>Challenge</Table.Th>
+                  <Table.Th style={{ fontSize: '10px', textAlign: 'center', width: '25%' }}>Formation</Table.Th>
+                  <Table.Th style={{ fontSize: '10px', textAlign: 'center', width: '25%' }}>Rating</Table.Th>
+                </Table.Tr>
+              </Table.Thead>
+              <Table.Tbody>
+                {challenges.map(challenge => (
+                  <Table.Tr key={challenge.challengeId}>
+                    <Table.Td>
+                      <Text size="xs" truncate>{challenge.name}</Text>
+                    </Table.Td>
+                    <Table.Td style={{ textAlign: 'center' }}>
+                      <Text size="xs">{challenge.formation.replace('f', '')}</Text>
+                    </Table.Td>
+                    <Table.Td style={{ textAlign: 'center' }}>
+                      <Text size="xs" c={challenge.teamRating ? 'blue' : 'dimmed'}>
+                        {challenge.teamRating ?? '-'}
+                      </Text>
+                    </Table.Td>
+                  </Table.Tr>
+                ))}
+              </Table.Tbody>
+            </Table>
+          </Table.ScrollContainer>
+        )}
+      </Paper>
+    );
+  }
+
+  return (
+    <Paper p="xs" radius="sm" withBorder>
+      <Group justify="space-between" mb="xs">
+        <Text size="xs" fw={600}>🎯 Live SBCs ({sbcs.length})</Text>
+        {totalPages > 1 && (
+          <Group gap={2}>
+            <ActionIcon
+              size="xs"
+              variant="subtle"
+              disabled={page === 0}
+              onClick={() => setPage(p => p - 1)}
+            >
+              <IconChevronLeft size={12} />
+            </ActionIcon>
+            <Text size="xs" c="dimmed">{page + 1}/{totalPages}</Text>
+            <ActionIcon
+              size="xs"
+              variant="subtle"
+              disabled={page >= totalPages - 1}
+              onClick={() => setPage(p => p + 1)}
+            >
+              <IconChevronRight size={12} />
+            </ActionIcon>
+          </Group>
+        )}
+      </Group>
+      <Table.ScrollContainer minWidth={200}>
+        <Table striped highlightOnHover withTableBorder withColumnBorders verticalSpacing={2} horizontalSpacing={4} layout="fixed">
+          <Table.Thead>
+            <Table.Tr>
+              <Table.Th style={{ fontSize: '10px', width: '45%' }}>SBC Name</Table.Th>
+              <Table.Th style={{ fontSize: '10px', textAlign: 'center', width: '14%' }}>
+                <Group gap={2} justify="center">
+                  <IconThumbUp size={10} color="green" />
+                </Group>
+              </Table.Th>
+              <Table.Th style={{ fontSize: '10px', textAlign: 'center', width: '14%' }}>
+                <Group gap={2} justify="center">
+                  <IconThumbDown size={10} color="red" />
+                </Group>
+              </Table.Th>
+              <Table.Th style={{ fontSize: '10px', textAlign: 'center', width: '14%' }}>%</Table.Th>
+              <Table.Th style={{ fontSize: '10px', textAlign: 'center', width: '13%' }}>#</Table.Th>
+            </Table.Tr>
+          </Table.Thead>
+          <Table.Tbody>
+            {currentSBCs.map(sbc => (
+              <Table.Tr
+                key={sbc.setId}
+                style={{ cursor: 'pointer' }}
+                onClick={() => handleSBCClick(sbc.setId, sbc.name)}
+              >
+                <Table.Td>
+                  <Text size="xs" truncate>{sbc.name}</Text>
+                </Table.Td>
+                <Table.Td style={{ textAlign: 'center' }}>
+                  <Text size="xs" c="green">{sbc.likes}</Text>
+                </Table.Td>
+                <Table.Td style={{ textAlign: 'center' }}>
+                  <Text size="xs" c="red">{sbc.dislikes}</Text>
+                </Table.Td>
+                <Table.Td style={{ textAlign: 'center' }}>
+                  <Text
+                    size="xs"
+                    c={sbc.likePercent >= 70 ? 'green' : sbc.likePercent >= 50 ? 'yellow' : 'red'}
+                  >
+                    {sbc.likePercent.toFixed(0)}%
+                  </Text>
+                </Table.Td>
+                <Table.Td style={{ textAlign: 'center' }}>
+                  <Text size="xs" c="blue">{sbc.challengesCount}</Text>
+                </Table.Td>
+              </Table.Tr>
+            ))}
+          </Table.Tbody>
+        </Table>
+      </Table.ScrollContainer>
     </Paper>
   );
 }
@@ -941,6 +1214,9 @@ function App() {
                       maxCount={topStats.topPositions[0]?.count || 1}
                     />
                   </SimpleGrid>
+
+                  {/* Live SBCs */}
+                  <SBCList sid={sid} />
                 </Stack>
               </Grid.Col>
             </Grid>
