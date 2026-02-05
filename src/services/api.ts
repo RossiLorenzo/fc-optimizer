@@ -9,15 +9,21 @@ import type {
 
 const CORS_PROXY = 'https://cors-anywhere-lorenzo.herokuapp.com/';
 const EA_STATIC_URL = 'https://www.ea.com/ea-sports-fc/ultimate-team/web-app/content/26E4D4D6-8DBB-4A9A-BD99-9C47D3AA341D/2026/fut/items/web';
+const EA_IMAGES_URL = 'https://www.ea.com/ea-sports-fc/ultimate-team/web-app/content/26E4D4D6-8DBB-4A9A-BD99-9C47D3AA341D/2026/fut/items/images/mobile';
 const FUT_API_URL = 'https://utas.mob.v4.prd.futc-ext.gcp.ea.com/ut/game/fc26';
 const FUTGG_API_URL = 'https://www.fut.gg/api/fut/fc-core-data';
 
-// Proxy image URLs to avoid CORS/hotlink protection issues
-const proxyImageUrl = (url: string | undefined): string | undefined => {
-  if (!url) return undefined;
-  // The fut.gg CDN blocks requests from non-whitelisted domains
-  // Proxy through our CORS proxy
-  return `${CORS_PROXY}${url}`;
+// Generate EA CDN URLs for clubs, nations, and leagues
+const getClubImageUrl = (clubId: number): string => {
+  return `${EA_IMAGES_URL}/clubs/dark/${clubId}.png`;
+};
+
+const getNationImageUrl = (nationId: number): string => {
+  return `${EA_IMAGES_URL}/flags/light/${nationId}.png`;
+};
+
+const getLeagueImageUrl = (leagueId: number): string => {
+  return `${EA_IMAGES_URL}/leagues/dark/${leagueId}.png`;
 };
 
 interface FutGGClub {
@@ -100,26 +106,26 @@ async function fetchFutGGData(): Promise<{
 
   const response = await corsRequest<FutGGResponse>(url);
 
-  // Build teams map (including sibling clubs)
+  // Build teams map (including sibling clubs) - use EA CDN for images
   const teams = new Map<number, EntityInfo>();
   for (const club of response.data.clubs) {
-    teams.set(club.eaId, { name: club.name, imgUrl: proxyImageUrl(club.imageUrl) });
+    teams.set(club.eaId, { name: club.name, imgUrl: getClubImageUrl(club.eaId) });
     // Also add sibling club ID with same info
     if (club.siblingClubEaId) {
-      teams.set(club.siblingClubEaId, { name: club.name, imgUrl: proxyImageUrl(club.imageUrl) });
+      teams.set(club.siblingClubEaId, { name: club.name, imgUrl: getClubImageUrl(club.siblingClubEaId) });
     }
   }
 
-  // Build nations map
+  // Build nations map - use EA CDN for images
   const nations = new Map<number, EntityInfo>();
   for (const nation of response.data.nations) {
-    nations.set(nation.eaId, { name: nation.name, imgUrl: proxyImageUrl(nation.imageUrl) });
+    nations.set(nation.eaId, { name: nation.name, imgUrl: getNationImageUrl(nation.eaId) });
   }
 
-  // Build leagues map
+  // Build leagues map - use EA CDN for images
   const leagues = new Map<number, EntityInfo>();
   for (const league of response.data.leagues) {
-    leagues.set(league.eaId, { name: league.name, imgUrl: proxyImageUrl(league.imageUrl) });
+    leagues.set(league.eaId, { name: league.name, imgUrl: getLeagueImageUrl(league.eaId) });
   }
 
   console.log(`Loaded ${nations.size} nations, ${leagues.size} leagues, ${teams.size} teams from fut.gg`);
