@@ -8,6 +8,7 @@ export interface RawPlayerData {
 }
 
 export interface PlayerItem {
+  id: number; // unique item instance ID (used for SBC squad placement)
   assetId: number;
   rating: number;
   possiblePositions: string[];
@@ -38,6 +39,7 @@ export interface PlayersJsonResponse {
 }
 
 export interface ProcessedPlayer {
+  itemId: number; // unique item instance ID for SBC squad placement
   assetId: number;
   name: string;
   rating: number;
@@ -57,6 +59,7 @@ export interface ProcessedPlayer {
 export interface AggregatedPlayer extends ProcessedPlayer {
   copies: number;
   types: ('Transfer' | 'Storage' | 'Duplicated')[];
+  itemIds: number[]; // all item instance IDs for this aggregated player
 }
 
 export interface FilterState {
@@ -69,17 +72,3 @@ export interface FilterState {
   multipleCopiesOnly: boolean;
 }
 
-export interface Team {
-  id: number;
-  name: string;
-}
-
-export interface League {
-  id: number;
-  name: string;
-}
-
-export interface Nation {
-  id: number;
-  name: string;
-}

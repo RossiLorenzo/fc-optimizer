@@ -4,6 +4,7 @@ import type {
   DuplicatedResponse,
   PlayersJsonResponse,
   RawPlayerData,
+  PlayerItem,
   ProcessedPlayer,
 } from '../types/player';
 
@@ -11,6 +12,7 @@ const CORS_PROXY = import.meta.env.VITE_CORS_PROXY || '';
 const EA_STATIC_URL = 'https://www.ea.com/ea-sports-fc/ultimate-team/web-app/content/26E4D4D6-8DBB-4A9A-BD99-9C47D3AA341D/2026/fut/items/web';
 const EA_IMAGES_URL = 'https://www.ea.com/ea-sports-fc/ultimate-team/web-app/content/26E4D4D6-8DBB-4A9A-BD99-9C47D3AA341D/2026/fut/items/images/mobile';
 const FUT_API_URL = 'https://utas.mob.v4.prd.futc-ext.gcp.ea.com/ut/game/fc26';
+const FUT_API_URL_V5 = 'https://utas.mob.v5.prd.futc-ext.gcp.ea.com/ut/game/fc26';
 const FUTGG_API_URL = 'https://www.fut.gg/api/fut/fc-core-data';
 const FUTNEXT_API_URL = 'https://enhancer-api.futnext.com';
 
@@ -73,7 +75,13 @@ async function corsRequest<T>(url: string, options?: RequestInit): Promise<T> {
   const corsUrl = CORS_PROXY + url;
 
   const headers = new Headers(options?.headers);
-  headers.set('X-Requested-With', 'XMLHttpRequest');
+
+  // Only add X-Requested-With for GET requests — it triggers CORS preflight
+  // on POST/PUT which the proxy may not handle, and EA doesn't require it
+  const method = options?.method?.toUpperCase() || 'GET';
+  if (method === 'GET') {
+    headers.set('X-Requested-With', 'XMLHttpRequest');
+  }
 
   if (!headers.has('Accept')) {
     headers.set('Accept', 'application/json');
@@ -239,108 +247,90 @@ export const processPlayers = async (sid: string): Promise<FetchResult> => {
     }),
   ]);
 
-  const tradePile = tradePileResult;
-  const storage = storageResult;
-  const duplicated = duplicatedResult;
-
-  const processedPlayers: ProcessedPlayer[] = [];
-
-  const getTeamName = (teamId: number): string => {
-    return staticData.teams.get(teamId)?.name || 'Unknown';
-  };
-
-  const getLeagueName = (leagueId: number): string => {
-    return staticData.leagues.get(leagueId)?.name || 'Unknown';
-  };
-
-  const getNationName = (nationId: number): string => {
-    return staticData.nations.get(nationId)?.name || 'Unknown';
-  };
-
-  const getTeamImg = (teamId: number): string | undefined => {
-    return staticData.teams.get(teamId)?.imgUrl;
-  };
-
-  const getLeagueImg = (leagueId: number): string | undefined => {
-    return staticData.leagues.get(leagueId)?.imgUrl;
-  };
-
-  const getNationImg = (nationId: number): string | undefined => {
-    return staticData.nations.get(nationId)?.imgUrl;
-  };
-
-  const getPlayerName = (assetId: number): string => {
-    const player = staticData.players.get(assetId);
-    if (!player) return 'Unknown';
-    return player.c || `${player.f} ${player.l}`;
-  };
-
-  // Process trade pile
-  if (tradePile.auctionInfo) {
-    for (const auction of tradePile.auctionInfo) {
-      const item = auction.itemData;
-      processedPlayers.push({
-        assetId: item.assetId,
-        name: getPlayerName(item.assetId),
-        rating: item.rating,
-        position: item.possiblePositions?.join(' / ') || 'Unknown',
-        nation: getNationName(item.nation),
-        nationId: item.nation,
-        nationImg: getNationImg(item.nation),
-        league: getLeagueName(item.leagueId),
-        leagueId: item.leagueId,
-        leagueImg: getLeagueImg(item.leagueId),
-        team: getTeamName(item.teamid),
-        teamId: item.teamid,
-        teamImg: getTeamImg(item.teamid),
-        type: 'Transfer',
-      });
-    }
+  function toProcessed(item: PlayerItem, type: ProcessedPlayer['type']): ProcessedPlayer {
+    const raw = staticData.players.get(item.assetId);
+    return {
+      itemId: item.id,
+      assetId: item.assetId,
+      name: raw ? (raw.c || `${raw.f} ${raw.l}`) : 'Unknown',
+      rating: item.rating,
+      position: item.possiblePositions?.join(' / ') || 'Unknown',
+      nation: staticData.nations.get(item.nation)?.name || 'Unknown',
+      nationId: item.nation,
+      nationImg: staticData.nations.get(item.nation)?.imgUrl,
+      league: staticData.leagues.get(item.leagueId)?.name || 'Unknown',
+      leagueId: item.leagueId,
+      leagueImg: staticData.leagues.get(item.leagueId)?.imgUrl,
+      team: staticData.teams.get(item.teamid)?.name || 'Unknown',
+      teamId: item.teamid,
+      teamImg: staticData.teams.get(item.teamid)?.imgUrl,
+      type,
+    };
   }
 
-  // Process storage
-  if (storage.itemData) {
-    for (const item of storage.itemData) {
-      processedPlayers.push({
-        assetId: item.assetId,
-        name: getPlayerName(item.assetId),
-        rating: item.rating,
-        position: item.possiblePositions?.join(' / ') || 'Unknown',
-        nation: getNationName(item.nation),
-        nationId: item.nation,
-        nationImg: getNationImg(item.nation),
-        league: getLeagueName(item.leagueId),
-        leagueId: item.leagueId,
-        leagueImg: getLeagueImg(item.leagueId),
-        team: getTeamName(item.teamid),
-        teamId: item.teamid,
-        teamImg: getTeamImg(item.teamid),
-        type: 'Storage',
-      });
-    }
+  const sources: { items: PlayerItem[]; type: ProcessedPlayer['type'] }[] = [
+    { items: (tradePileResult.auctionInfo || []).map(a => a.itemData), type: 'Transfer' },
+    { items: storageResult.itemData || [], type: 'Storage' },
+    { items: duplicatedResult.itemData || [], type: 'Duplicated' },
+  ];
+
+  const processedPlayers = sources.flatMap(({ items, type }) =>
+    items.map(item => toProcessed(item, type))
+  );
+
+  return { players: processedPlayers, warnings };
+};
+
+// Process players from bridge-intercepted inventory data (no API calls needed)
+export interface BridgeInventory {
+  tradepile: TradePileResponse | null;
+  storage: StorageResponse | null;
+  duplicated: DuplicatedResponse | null;
+  timestamp: number;
+}
+
+export const processPlayersFromBridge = async (inventory: BridgeInventory): Promise<FetchResult> => {
+  const staticData = await fetchStaticData();
+  const warnings: string[] = [];
+
+  const tradePileResult = inventory.tradepile || { auctionInfo: [] } as TradePileResponse;
+  const storageResult = inventory.storage || { itemData: [] } as StorageResponse;
+  const duplicatedResult = inventory.duplicated || { itemData: [] } as DuplicatedResponse;
+
+  if (!inventory.tradepile) warnings.push('Trade pile: not yet intercepted from EA');
+  if (!inventory.storage) warnings.push('Storage: not yet intercepted from EA');
+  if (!inventory.duplicated) warnings.push('Duplicated: not yet intercepted from EA');
+
+  function toProcessed(item: PlayerItem, type: ProcessedPlayer['type']): ProcessedPlayer {
+    const raw = staticData.players.get(item.assetId);
+    return {
+      itemId: item.id,
+      assetId: item.assetId,
+      name: raw ? (raw.c || `${raw.f} ${raw.l}`) : 'Unknown',
+      rating: item.rating,
+      position: item.possiblePositions?.join(' / ') || 'Unknown',
+      nation: staticData.nations.get(item.nation)?.name || 'Unknown',
+      nationId: item.nation,
+      nationImg: staticData.nations.get(item.nation)?.imgUrl,
+      league: staticData.leagues.get(item.leagueId)?.name || 'Unknown',
+      leagueId: item.leagueId,
+      leagueImg: staticData.leagues.get(item.leagueId)?.imgUrl,
+      team: staticData.teams.get(item.teamid)?.name || 'Unknown',
+      teamId: item.teamid,
+      teamImg: staticData.teams.get(item.teamid)?.imgUrl,
+      type,
+    };
   }
 
-  // Process duplicated
-  if (duplicated.itemData) {
-    for (const item of duplicated.itemData) {
-      processedPlayers.push({
-        assetId: item.assetId,
-        name: getPlayerName(item.assetId),
-        rating: item.rating,
-        position: item.possiblePositions?.join(' / ') || 'Unknown',
-        nation: getNationName(item.nation),
-        nationId: item.nation,
-        nationImg: getNationImg(item.nation),
-        league: getLeagueName(item.leagueId),
-        leagueId: item.leagueId,
-        leagueImg: getLeagueImg(item.leagueId),
-        team: getTeamName(item.teamid),
-        teamId: item.teamid,
-        teamImg: getTeamImg(item.teamid),
-        type: 'Duplicated',
-      });
-    }
-  }
+  const sources: { items: PlayerItem[]; type: ProcessedPlayer['type'] }[] = [
+    { items: (tradePileResult.auctionInfo || []).map(a => a.itemData), type: 'Transfer' },
+    { items: storageResult.itemData || [], type: 'Storage' },
+    { items: duplicatedResult.itemData || [], type: 'Duplicated' },
+  ];
+
+  const processedPlayers = sources.flatMap(({ items, type }) =>
+    items.map(item => toProcessed(item, type))
+  );
 
   return { players: processedPlayers, warnings };
 };
@@ -349,6 +339,7 @@ export const clearCache = () => {
   cachedData = null;
   staticDataPromise = null;
   sbcCache = null;
+  sbcFetchPromise = null;
 };
 
 // SBC API types and functions
@@ -422,6 +413,7 @@ export interface SBCWithDetails {
 }
 
 let sbcCache: { data: SBCWithDetails[]; timestamp: number } | null = null;
+let sbcFetchPromise: Promise<SBCWithDetails[]> | null = null;
 const SBC_CACHE_DURATION = 5 * 60 * 1000; // 5 minutes
 
 export const fetchSBCSets = async (sid: string): Promise<SBCSet[]> => {
@@ -504,6 +496,19 @@ export const fetchAllSBCsWithDetails = async (sid: string): Promise<SBCWithDetai
     return sbcCache.data;
   }
 
+  // Deduplicate in-flight requests (React strict mode fires effects twice)
+  if (sbcFetchPromise) {
+    return sbcFetchPromise;
+  }
+
+  sbcFetchPromise = _fetchAllSBCsWithDetailsImpl(sid).finally(() => {
+    sbcFetchPromise = null;
+  });
+
+  return sbcFetchPromise;
+};
+
+const _fetchAllSBCsWithDetailsImpl = async (sid: string): Promise<SBCWithDetails[]> => {
   const allSets = await fetchSBCSets(sid);
 
   const sets: SBCSet[] = [];
@@ -573,4 +578,61 @@ export const fetchAllSBCsWithDetails = async (sid: string): Promise<SBCWithDetai
   sbcCache = { data: result, timestamp: Date.now() };
 
   return result;
+};
+
+// SBC Squad Push API
+
+export interface SBCSquadResponse {
+  challengeId: number;
+  squad: {
+    id: number;
+    formation: string;
+    rating: number;
+    chemistry: number;
+    players: Array<{
+      index: number;
+      itemData: {
+        id: number;
+        assetId: number;
+        rating: number;
+        [key: string]: unknown;
+      };
+    }>;
+  };
+}
+
+export const getSBCSquad = async (sid: string, challengeId: number): Promise<SBCSquadResponse> => {
+  return corsRequest<SBCSquadResponse>(
+    `${FUT_API_URL}/sbs/challenge/${challengeId}/squad`,
+    {
+      headers: { 'X-UT-SID': sid },
+    }
+  );
+};
+
+export const updateSBCSquad = async (
+  sid: string,
+  challengeId: number,
+  playerItemIds: number[],
+  totalSlots: number = 23,
+): Promise<SBCSquadResponse> => {
+  const players = Array.from({ length: totalSlots }, (_, index) => ({
+    index,
+    itemData: {
+      id: index < playerItemIds.length ? playerItemIds[index] : 0,
+      dream: false,
+    },
+  }));
+
+  return corsRequest<SBCSquadResponse>(
+    `${FUT_API_URL}/sbs/challenge/${challengeId}/squad`,
+    {
+      method: 'PUT',
+      headers: {
+        'X-UT-SID': sid,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ players }),
+    }
+  );
 };
