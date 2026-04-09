@@ -60,7 +60,7 @@ function App() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [warnings, setWarnings] = useState<string[]>([]);
-  const [lastRefresh, setLastRefresh] = useState<Date | null>(null);
+
   const [staticDataLoading, setStaticDataLoading] = useState(true);
 
   // SBC push state
@@ -144,7 +144,7 @@ function App() {
             if (result.players.length > 0) {
               setPlayers(result.players);
               setWarnings(result.warnings);
-              setLastRefresh(new Date());
+
             }
           }).catch(() => {});
         }
@@ -183,7 +183,6 @@ function App() {
       const result: FetchResult = await processPlayers(sid.trim());
       setPlayers(result.players);
       setWarnings(result.warnings);
-      setLastRefresh(new Date());
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to fetch data');
     } finally {
@@ -309,7 +308,7 @@ function App() {
 
   // Build slot data from selected players for push commands
   const buildSlotData = useCallback(() => {
-    const slotData: Record<number, { a: number; r: number; p: string[]; n: number; l: number; t: number }> = {};
+    const slotData: Record<number, { a: number; r: number; p: string[]; n: number; l: number; t: number; nm: string }> = {};
     let idx = 0;
     for (const p of filteredPlayers) {
       if (selectedPlayerIds.has(playerKey(p))) {

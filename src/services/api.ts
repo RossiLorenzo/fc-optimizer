@@ -12,7 +12,7 @@ const CORS_PROXY = import.meta.env.VITE_CORS_PROXY || '';
 const EA_STATIC_URL = 'https://www.ea.com/ea-sports-fc/ultimate-team/web-app/content/26E4D4D6-8DBB-4A9A-BD99-9C47D3AA341D/2026/fut/items/web';
 const EA_IMAGES_URL = 'https://www.ea.com/ea-sports-fc/ultimate-team/web-app/content/26E4D4D6-8DBB-4A9A-BD99-9C47D3AA341D/2026/fut/items/images/mobile';
 const FUT_API_URL = 'https://utas.mob.v4.prd.futc-ext.gcp.ea.com/ut/game/fc26';
-const FUT_API_URL_V5 = 'https://utas.mob.v5.prd.futc-ext.gcp.ea.com/ut/game/fc26';
+
 const FUTGG_API_URL = 'https://www.fut.gg/api/fut/fc-core-data';
 const FUTNEXT_API_URL = 'https://enhancer-api.futnext.com';
 

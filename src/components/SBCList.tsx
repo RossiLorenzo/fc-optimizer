@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import {
-  Paper, Group, Text, ActionIcon, Table, Badge, Button, Center, Alert,
+  Paper, Group, Text, ActionIcon, Table, Button, Center, Alert,
 } from '@mantine/core';
 import {
   IconChevronLeft, IconChevronRight, IconThumbUp, IconThumbDown,
